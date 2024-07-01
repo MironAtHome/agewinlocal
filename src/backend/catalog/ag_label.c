@@ -20,16 +20,29 @@
 #include "postgres.h"
 
 #include "access/genam.h"
+#include "access/heapam.h"
+#include "access/htup.h"
+#include "access/htup_details.h"
+#include "access/skey.h"
+#include "access/stratnum.h"
 #include "catalog/indexing.h"
+#include "catalog/namespace.h"
+#include "fmgr.h"
+#include "nodes/execnodes.h"
 #include "nodes/makefuncs.h"
+#include "storage/lockdefs.h"
 #include "utils/builtins.h"
+#include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
+#include "utils/rel.h"
+#include "utils/relcache.h"
 
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
 #include "commands/label_commands.h"
 #include "executor/cypher_utils.h"
 #include "utils/ag_cache.h"
+#include "utils/graphid.h"
 
 /*
  * INSERT INTO ag_catalog.ag_label
@@ -230,7 +243,7 @@ Datum _extract_label_id(PG_FUNCTION_ARGS)
     }
     graph_oid = AG_GETARG_GRAPHID(0);
 
-    PG_RETURN_INT32(get_graphid_label_id(graph_oid));
+    PG_RETURN_INT64(get_graphid_label_id(graph_oid));
 }
 
 bool label_id_exists(Oid graph_oid, int32 label_id)

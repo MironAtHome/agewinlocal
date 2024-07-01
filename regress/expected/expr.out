@@ -3077,6 +3077,22 @@ $$) AS (toBoolean agtype);
  false
 (1 row)
 
+SELECT * FROM cypher('expr', $$
+    RETURN toBoolean(1)
+$$) AS (toBoolean agtype);
+ toboolean 
+-----------
+ true
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toBoolean(0)
+$$) AS (toBoolean agtype);
+ toboolean 
+-----------
+ false
+(1 row)
+
 -- should return null
 SELECT * FROM cypher('expr', $$
     RETURN toBoolean("false_")
@@ -3092,22 +3108,6 @@ $$) AS (toBoolean agtype);
  toboolean 
 -----------
  
-(1 row)
-
-SELECT * FROM cypher('expr', $$
-    RETURN toBoolean(1)
-$$) AS (toBoolean agtype);
- toboolean 
------------
- true
-(1 row)
-
-SELECT * FROM cypher('expr', $$
-    RETURN toBoolean(0)
-$$) AS (toBoolean agtype);
- toboolean 
------------
- false
 (1 row)
 
 -- should fail

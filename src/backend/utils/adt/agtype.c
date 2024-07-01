@@ -89,6 +89,7 @@ typedef enum /* type categories for datum_to_agtype */
 } agt_type_category;
 
 static inline Datum agtype_from_cstring(char *str, int len);
+static inline agtype_value *agtype_value_from_cstring(char *str, int len);
 size_t check_string_length(size_t len);
 static void agtype_in_agtype_annotation(void *pstate, char *annotation);
 static void agtype_in_object_start(void *pstate);
@@ -354,7 +355,7 @@ Datum agtype_out(PG_FUNCTION_ARGS)
  * Uses the agtype parser (with hooks) to construct an agtype.
  */
 
-agtype_value *agtype_value_from_cstring(char *str, int len)
+static inline agtype_value *agtype_value_from_cstring(char *str, int len)
 {
     agtype_lex_context *lex;
     agtype_in_state state;
@@ -2195,9 +2196,12 @@ Datum _agtype_build_vertex(PG_FUNCTION_ARGS)
     /* handles null */
     if (fcinfo->args[0].isnull)
     {
+        /*
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                  errmsg("_agtype_build_vertex() graphid cannot be NULL")));
+                 */
+        PG_RETURN_NULL();
     }
 
     if (fcinfo->args[1].isnull)
@@ -2266,9 +2270,12 @@ Datum _agtype_build_edge(PG_FUNCTION_ARGS)
     /* process graph id */
     if (fcinfo->args[0].isnull)
     {
+        PG_RETURN_NULL();
+        /*
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                  errmsg("_agtype_build_edge() graphid cannot be NULL")));
+                 */
     }
 
     id = AG_GETARG_GRAPHID(0);
@@ -2984,7 +2991,7 @@ Datum agtype_to_int2(PG_FUNCTION_ARGS)
 
     PG_FREE_IF_COPY(arg_agt, 0);
 
-    PG_RETURN_INT16(result);
+    PG_RETURN_INT64(result);
 }
 
 PG_FUNCTION_INFO_V1(agtype_to_float8);
@@ -5871,10 +5878,10 @@ Datum age_tobooleanlist(PG_FUNCTION_ARGS)
             
             bool_elem.val.boolean = elem->val.boolean;
             agis_result.res = push_agtype_value(&agis_result.parse_state,
-                                                WAGT_ELEM, &bool_elem);
+                                                    WAGT_ELEM, &bool_elem);
 
             break;
-        
+
         case AGTV_INTEGER:
 
             bool_elem.val.boolean = DatumGetBool(DirectFunctionCall1(int4_bool,
@@ -5883,12 +5890,12 @@ Datum age_tobooleanlist(PG_FUNCTION_ARGS)
                                                 WAGT_ELEM, &bool_elem);
 
             break;
-
+        
         default:
             
             bool_elem.type = AGTV_NULL;
             agis_result.res = push_agtype_value(&agis_result.parse_state,
-                                                WAGT_ELEM, &bool_elem);
+                                                    WAGT_ELEM, &bool_elem);
             
             break;
         }
@@ -6241,7 +6248,7 @@ Datum age_tointeger(PG_FUNCTION_ARGS)
              */
             result = float8in_internal_null(string, NULL, "double precision",
                                             string, &is_valid);
-
+ 
             if (*endptr != '\0')
             {
                 float8 f;

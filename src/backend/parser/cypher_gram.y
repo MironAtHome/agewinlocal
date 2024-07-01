@@ -242,10 +242,6 @@ static FuncCall *node_to_agtype(Node* fnode, char *type, int location);
 /* setops */
 static Node *make_set_op(SetOperation op, bool all_or_distinct, List *larg,
                          List *rarg);
-static Node *make_subquery_returnless_set_op(SetOperation op,
-                                             bool all_or_distinct,
-                                             List *larg,
-                                             List *rarg);
 
 /* VLE */
 static cypher_relationship *build_VLE_relation(List *left_arg,
@@ -391,35 +387,44 @@ call_stmt:
 
             $$ = (Node *)n;
         }
-    | CALL expr_var '.' expr_func_norm
+    | CALL expr '.' expr
         {
             cypher_call *n = make_ag_node(cypher_call);
-            FuncCall *fc = (FuncCall*)$4;
-            ColumnRef *cr = (ColumnRef*)$2;
-            List *fields = cr->fields;
-            String *string = linitial(fields);
 
-            /*
-             * A function can only be qualified with a single schema. So, we
-             * check to see that the function isn't already qualified. There
-             * may be unforeseen cases where we might need to remove this in
-             * the future.
-             */
-            if (list_length(fc->funcname) == 1)
+            if (IsA($4, FuncCall) && IsA($2, ColumnRef))
             {
-                fc->funcname = lcons(string, fc->funcname);
-                $$ = (Node*)fc;
+                FuncCall *fc = (FuncCall*)$4;
+                ColumnRef *cr = (ColumnRef*)$2;
+                List *fields = cr->fields;
+                String *string = linitial(fields);
+
+                /*
+                 * A function can only be qualified with a single schema. So, we
+                 * check to see that the function isn't already qualified. There
+                 * may be unforeseen cases where we might need to remove this in
+                 * the future.
+                 */
+                if (list_length(fc->funcname) == 1)
+                {
+                    fc->funcname = lcons(string, fc->funcname);
+                    $$ = (Node*)fc;
+                }
+                else
+                    ereport(ERROR,
+                            (errcode(ERRCODE_SYNTAX_ERROR),
+                             errmsg("function already qualified"),
+                             ag_scanner_errposition(@1, scanner)));
+
+                n->funccall = fc;
+                $$ = (Node *)n;
             }
             else
             {
                 ereport(ERROR,
                         (errcode(ERRCODE_SYNTAX_ERROR),
-                            errmsg("function already qualified"),
-                            ag_scanner_errposition(@1, scanner)));
+                         errmsg("CALL statement must be a qualified function"),
+                         ag_scanner_errposition(@1, scanner)));
             }
-
-            n->funccall = fc;
-            $$ = (Node *)n;
         }
     | CALL expr_func_norm YIELD yield_item_list where_opt
         {
@@ -429,37 +434,46 @@ call_stmt:
             n->where = $5;
             $$ = (Node *)n;
         }
-    | CALL expr_var '.' expr_func_norm YIELD yield_item_list where_opt
+    | CALL expr '.' expr YIELD yield_item_list where_opt
         {
             cypher_call *n = make_ag_node(cypher_call);
-            FuncCall *fc = (FuncCall*)$4;
-            ColumnRef *cr = (ColumnRef*)$2;
-            List *fields = cr->fields;
-            String *string = linitial(fields);
 
-            /*
-             * A function can only be qualified with a single schema. So, we
-             * check to see that the function isn't already qualified. There
-             * may be unforeseen cases where we might need to remove this in
-             * the future.
-             */
-            if (list_length(fc->funcname) == 1)
+            if (IsA($4, FuncCall) && IsA($2, ColumnRef))
             {
-                fc->funcname = lcons(string, fc->funcname);
-                $$ = (Node*)fc;
+                FuncCall *fc = (FuncCall*)$4;
+                ColumnRef *cr = (ColumnRef*)$2;
+                List *fields = cr->fields;
+                String *string = linitial(fields);
+
+                /*
+                 * A function can only be qualified with a single schema. So, we
+                 * check to see that the function isn't already qualified. There
+                 * may be unforeseen cases where we might need to remove this in
+                 * the future.
+                 */
+                if (list_length(fc->funcname) == 1)
+                {
+                    fc->funcname = lcons(string, fc->funcname);
+                    $$ = (Node*)fc;
+                }
+                else
+                    ereport(ERROR,
+                            (errcode(ERRCODE_SYNTAX_ERROR),
+                             errmsg("function already qualified"),
+                             ag_scanner_errposition(@1, scanner)));
+
+                n->funccall = fc;
+                n->yield_items = $6;
+                n->where = $7;
+                $$ = (Node *)n;
             }
             else
             {
                 ereport(ERROR,
                         (errcode(ERRCODE_SYNTAX_ERROR),
-                            errmsg("function already qualified"),
-                            ag_scanner_errposition(@1, scanner)));
+                         errmsg("CALL statement must be a qualified function"),
+                         ag_scanner_errposition(@1, scanner)));
             }
-
-            n->funccall = fc;
-            n->yield_items = $6;
-            n->where = $7;
-            $$ = (Node *)n;
         }
     ;
 
@@ -633,19 +647,21 @@ subquery_stmt_no_return:
         }
     | subquery_stmt_no_return UNION all_or_distinct subquery_stmt_no_return
         {
-            $$ = list_make1(make_subquery_returnless_set_op(SETOP_UNION, $3, $1, $4));
+            ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+                errmsg("Subquery UNION without returns not yet implemented"),
+                ag_scanner_errposition(@2, scanner)));
         }
     ;
 
 single_subquery:
-    subquery_part_init reading_clause_list return
+        subquery_part_init reading_clause_list return
         {
             $$ = list_concat($1, lappend($2, $3));  
         }
     ;
 
 single_subquery_no_return:
-    subquery_part_init reading_clause_list
+        subquery_part_init reading_clause_list
         {
             ColumnRef *cr;
             ResTarget *rt;
@@ -2951,20 +2967,6 @@ static Node *make_set_op(SetOperation op, bool all_or_distinct, List *larg,
 
     n->op = op;
     n->all_or_distinct = all_or_distinct;
-    n->larg = (List *) larg;
-    n->rarg = (List *) rarg;
-    return (Node *) n;
-}
-
-/*set operation function node to make a returnless set op node for subqueries*/
-static Node *make_subquery_returnless_set_op(SetOperation op, bool all_or_distinct, List *larg,
-                         List *rarg)
-{
-    cypher_return *n = make_ag_node(cypher_return);
-
-    n->op = op;
-    n->all_or_distinct = all_or_distinct;
-    n->returnless_union = true;
     n->larg = (List *) larg;
     n->rarg = (List *) rarg;
     return (Node *) n;

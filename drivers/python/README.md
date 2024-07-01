@@ -13,7 +13,7 @@ KIND, either express or implied.  See the License for the
 specific language governing permissions and limitations
 under the License.
 
-[Apache AGE](https://age.apache.org/) is a PostgreSQL extension that provides graph database functionality. The goal of the Apache AGE project is to create single storage that can handle both relational and graph model data so that users can use standard ANSI SQL along with openCypher, the Graph query language. This repository hosts the development of the Python driver for this Apache extension (currently in Incubator status). Thanks for checking it out.
+Apache AGE](https://age.apache.org/) is a PostgreSQL extension that provides graph database functionality. The goal of the Apache AGE project is to create single storage that can handle both relational and graph model data so that users can use standard ANSI SQL along with openCypher, the Graph query language. This repository hosts the development of the Python driver for this Apache extension (currently in Incubator status). Thanks for checking it out.
 
 A graph consists of a set of vertices (also called nodes) and edges, where each individual vertex and edge possesses a map of properties. A vertex is the basic object of a graph, that can exist independently of everything else in the graph. An edge creates a directed connection between two vertices. A graph database is simply composed of vertices and edges. This type of database is useful when the meaning is in the relationships between the data. Relational databases can easily handle direct relationships, but indirect relationships are more difficult to deal with in relational databases. A graph database stores relationship information as a first-class entity. Apache AGE gives you the best of both worlds, simultaneously.
 
@@ -66,7 +66,7 @@ python setup.py install
 ```
 
 ### For more information about [Apache AGE](https://age.apache.org/)
-* Apache AGE : https://age.apache.org/
+* Apache Age : https://age.apache.org/
 * GitHub : https://github.com/apache/age
 * Document : https://age.apache.org/age-manual/master/index.html
 
@@ -80,26 +80,16 @@ SET search_path = ag_catalog, "$user", public;
 ```
 
 ### Usage
-* If you are not familiar with Psycopg2 driver : Go to [Jupyter Notebook : Basic Sample](samples/apache-age-basic.ipynb) 
+* If you are familiar with Psycopg2 driver : Go to [Jupyter Notebook : Basic Sample](samples/apache-age-basic.ipynb) 
 * Simpler way to access Apache AGE [AGE Sample](samples/apache-age-note.ipynb) in Samples.
 * Agtype converting samples: [Agtype Sample](samples/apache-age-agtypes.ipynb) in Samples.
-
-### Non-Superuser Usage
-* For non-superuser usage see: [Allow Non-Superusers to Use Apache Age](https://age.apache.org/age-manual/master/intro/setup.html).
-* Make sure to give your non-superuser db account proper permissions to the graph schemas and corresponding objects
-* Make sure to initiate the Apache Age python driver with the ```load_from_plugins``` parameter. This parameter tries to
-  load the Apache Age extension from the PostgreSQL plugins directory located at ```$libdir/plugins/age```. Example:
-  ```python.
-  ag = age.connect(host='localhost', port=5432, user='dbuser', password='strong_password', 
-                   dbname=postgres, load_from_plugins=True, graph='graph_name)
-  ```
 
 ### License
 Apache-2.0 License
 
 
 ## Networkx
-### Networkx Unit test
+### Netowkx Unit test
 ```
 python test_networkx.py \
 -host "127.0.0.1" \
@@ -116,14 +106,14 @@ Here the following value required
 - `-port` : port (optional)
 
 ### Networkx to AGE
-Insert From networkx directed graph into an AGE database.
+Insert From networkx directed graph into an Age database.
 #### Parameters
 
-- `connection` (psycopg2.connect): Connection object to the AGE database.
+- `connection` (psycopg2.connect): Connection object to the Age database.
 
 - `G` (networkx.DiGraph): Networkx directed graph to be converted and inserted.
 
-- `graphName` (str): Name of the AGE graph.
+- `graphName` (str): Name of the age graph.
 
 #### Returns
 
@@ -146,7 +136,7 @@ networkx_to_age(connection, G, graphName)
 
 
 
-### AGE to Networkx
+### AGE to Netowkx
 
 Converts data from a Apache AGE graph database into a Networkx directed graph.
 

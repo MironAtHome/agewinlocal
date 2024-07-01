@@ -32,11 +32,9 @@
 agtype* create_empty_agtype(void);
 
 agtype* create_agtype_from_list(char **header, char **fields,
-                                size_t fields_len, int64 vertex_id,
-                                bool load_as_agtype);
+                                size_t fields_len, int64 vertex_id);
 agtype* create_agtype_from_list_i(char **header, char **fields,
-                                  size_t fields_len, size_t start_index,
-                                  bool load_as_agtype);
+                                  size_t fields_len, size_t start_index);
 void insert_vertex_simple(Oid graph_oid, char *label_name, graphid vertex_id,
                           agtype *vertex_properties);
 void insert_edge_simple(Oid graph_oid, char *label_name, graphid edge_id,
