@@ -30,15 +30,13 @@
  */
 
 #include "postgres.h"
-#include "varatt.h"
+
 #include "catalog/pg_type.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
 #include "utils/date.h"
 #include "utils/datetime.h"
-#include "utils/varlena.h"
 
-#include "utils/agtype.h"
 #include "utils/agtype_parser.h"
 
 /*

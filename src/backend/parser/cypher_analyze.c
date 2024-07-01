@@ -1216,7 +1216,7 @@ static Query *analyze_cypher_and_coerce(List *stmt, RangeTblFunction *rtfunc,
                                         lateral, true);
 
     rtindex = list_length(pstate->p_rtable);
-    /* rte is the only RangeTblEntry in pstate */
+    Assert(rtindex == 1); /* rte is the only RangeTblEntry in pstate */
     if (rtindex !=1 )
     {
         ereport(ERROR,
@@ -1226,7 +1226,7 @@ static Query *analyze_cypher_and_coerce(List *stmt, RangeTblFunction *rtfunc,
 
 
     addNSItemToQuery(pstate, pnsi, true, true, true);
-    query->targetList = expandNSItemAttrs(pstate, pnsi, 0, true, -1);
+    query->targetList = expandNSItemAttrs(pstate, pnsi, 0, -1);
 
     markTargetListOrigins(pstate, query->targetList);
 
@@ -1282,7 +1282,6 @@ static Query *analyze_cypher_and_coerce(List *stmt, RangeTblFunction *rtfunc,
     }
 
     query->rtable = pstate->p_rtable;
-    query->rteperminfos = pstate->p_rteperminfos;
     query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
 
     assign_query_collations(pstate, query);

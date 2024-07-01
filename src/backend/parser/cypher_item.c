@@ -34,9 +34,8 @@
 #include "parser/cypher_clause.h"
 
 static List *ExpandAllTables(ParseState *pstate, int location);
-static List *expand_pnsi_attrs(ParseState *pstate, ParseNamespaceItem *pnsi,
-			       int sublevels_up, bool require_col_privs,
-                               int location);
+static List *expand_rel_attrs(ParseState *pstate, RangeTblEntry *rte,
+                              int rtindex, int sublevels_up, int location);
 bool has_a_cypher_list_comprehension_node(Node *expr);
 
 /* see transformTargetEntry() */
@@ -273,10 +272,9 @@ List *transform_cypher_item_list(cypher_parsestate *cpstate, List *item_list,
             pnsi = transform_cypher_clause_as_subquery(cpstate,
                                                        transform_cypher_clause,
                                                        &cc, NULL, true);
-
             target_list = list_concat(target_list,
                                       expandNSItemAttrs(&cpstate->pstate, pnsi,
-                                                        0, true, -1));
+                                                        0, -1));
         }
         else
         {
@@ -389,8 +387,10 @@ static List *ExpandAllTables(ParseState *pstate, int location)
         /* Remember we found a p_cols_visible item */
         found_table = true;
 
-        target = list_concat(target, expand_pnsi_attrs(pstate, nsitem, 0, true,
-                                                       location));
+        target = list_concat(target, expand_rel_attrs(pstate,
+                                                      nsitem->p_rte,
+                                                      nsitem->p_rtindex,
+                                                      0, location));
     }
 
     /* Check for "RETURN *;" */
@@ -403,33 +403,26 @@ static List *ExpandAllTables(ParseState *pstate, int location)
 }
 
 /*
- * From PG's expandNSItemAttrs
+ * From PG's expandRelAttrs
  * Modified to exclude hidden variables and aliases in RETURN *
  */
-static List *expand_pnsi_attrs(ParseState *pstate, ParseNamespaceItem *pnsi,
-			       int sublevels_up, bool require_col_privs,
-                               int location)
+static List *expand_rel_attrs(ParseState *pstate, RangeTblEntry *rte,
+                              int rtindex, int sublevels_up, int location)
 {
-    RangeTblEntry *rte = pnsi->p_rte;
-    RTEPermissionInfo *perminfo = pnsi->p_perminfo;
     List *names, *vars;
     ListCell *name, *var;
     List *te_list = NIL;
     int var_prefix_len = strlen(AGE_DEFAULT_VARNAME_PREFIX);
     int alias_prefix_len = strlen(AGE_DEFAULT_ALIAS_PREFIX);
 
-    vars = expandNSItemVars(pstate, pnsi, sublevels_up, location, &names);
+    expandRTE(rte, rtindex, sublevels_up, location, false, &names, &vars);
 
     /*
      * Require read access to the table.  This is normally redundant with the
      * markVarForSelectPriv calls below, but not if the table has zero
      * columns.
      */
-    if (rte->rtekind == RTE_RELATION)
-     {
-         Assert(perminfo != NULL);
-         perminfo->requiredPerms |= ACL_SELECT;
-     }
+    rte->requiredPerms |= ACL_SELECT;
 
     /* iterate through the variables */
     forboth(name, names, var, vars)

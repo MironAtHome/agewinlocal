@@ -35,29 +35,20 @@ class AgeDumper(psycopg.adapt.Dumper):
     
     
 class AgeLoader(psycopg.adapt.Loader):    
-    def load(self, data: bytes | bytearray | memoryview) -> Any | None:
-        if isinstance(data, memoryview):
-            data_bytes = data.tobytes()
-        else:
-            data_bytes = data
-
-        return parseAgeValue(data_bytes.decode('utf-8'))
+    def load(self, data: bytes | bytearray | memoryview) -> Any | None:    
+        return parseAgeValue(data.decode('utf-8'))
 
 
-def setUpAge(conn:psycopg.connection, graphName:str, load_from_plugins:bool=False):
+def setUpAge(conn:psycopg.connection, graphName:str):
     with conn.cursor() as cursor:
-        if load_from_plugins:
-            cursor.execute("LOAD '$libdir/plugins/age';")
-        else:
-            cursor.execute("LOAD 'age';")
-
+        cursor.execute("LOAD 'age';")
         cursor.execute("SET search_path = ag_catalog, '$user', public;")
 
         ag_info = TypeInfo.fetch(conn, 'agtype')
 
         if not ag_info:
             raise AgeNotSet()
-
+    
         conn.adapters.register_loader(ag_info.oid, AgeLoader)
         conn.adapters.register_loader(ag_info.array_oid, AgeLoader)
 
@@ -193,10 +184,9 @@ class Age:
         self.graphName = None
 
     # Connect to PostgreSQL Server and establish session and type extension environment.
-    def connect(self, graph:str=None, dsn:str=None, connection_factory=None, cursor_factory=ClientCursor,
-                load_from_plugins:bool=False, **kwargs):
+    def connect(self, graph:str=None, dsn:str=None, connection_factory=None, cursor_factory=ClientCursor, **kwargs):
         conn = psycopg.connect(dsn, cursor_factory=cursor_factory, **kwargs)
-        setUpAge(conn, graph, load_from_plugins)
+        setUpAge(conn, graph)
         self.connection = conn
         self.graphName = graph
         return self

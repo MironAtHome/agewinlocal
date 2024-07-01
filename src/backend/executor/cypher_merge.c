@@ -779,9 +779,8 @@ static TupleTableSlot *exec_cypher_merge(CustomScanState *node)
              * So we will need to create a TupleTableSlot and populate with the
              * information from the newly created path that the query needs.
              */
-            SubqueryScanState *sss = NULL;
-            econtext = node->ss.ps.ps_ExprContext;
-            sss = (SubqueryScanState *)node->ss.ps.lefttree;
+            ExprContext *econtext = node->ss.ps.ps_ExprContext;
+            SubqueryScanState *sss = (SubqueryScanState *)node->ss.ps.lefttree;
 
             /*
              * Our child execution node is always a subquery. If not there

@@ -21,8 +21,19 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "access/htup.h"
+#include "access/htup_details.h"
+#include "access/skey.h"
+#include "access/stratnum.h"
 #include "catalog/indexing.h"
+#include "catalog/namespace.h"
+#include "nodes/makefuncs.h"
+#include "storage/lockdefs.h"
+#include "utils/fmgroids.h"
+#include "utils/fmgrprotos.h"
 #include "utils/lsyscache.h"
+#include "utils/rel.h"
+#include "utils/relcache.h"
 
 #include "catalog/ag_graph.h"
 #include "utils/ag_cache.h"
@@ -38,8 +49,8 @@ void insert_graph(const Name graph_name, const Oid nsp_id)
     HeapTuple tuple;
 
 
-    Assert(graph_name);
-    Assert(OidIsValid(nsp_id));
+    AssertArg(graph_name);
+    AssertArg(OidIsValid(nsp_id));
 
     ag_graph = table_open(ag_graph_relation_id(), RowExclusiveLock);
     values[Anum_ag_graph_oid - 1] = ObjectIdGetDatum(nsp_id);

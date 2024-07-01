@@ -218,7 +218,7 @@ static Node *make_cypher_comparison_boolexpr(BoolExprType boolop, List *args,
 
 /* arithmetic operators */
 static Node *do_negate(Node *n, int location);
-static void do_negate_float(Float *v);
+static void do_negate_float(Value *v);
 
 /* indirection */
 static Node *append_indirection(Node *expr, Node *selector);
@@ -242,10 +242,6 @@ static FuncCall *node_to_agtype(Node* fnode, char *type, int location);
 /* setops */
 static Node *make_set_op(SetOperation op, bool all_or_distinct, List *larg,
                          List *rarg);
-static Node *make_subquery_returnless_set_op(SetOperation op,
-                                             bool all_or_distinct,
-                                             List *larg,
-                                             List *rarg);
 
 /* VLE */
 static cypher_relationship *build_VLE_relation(List *left_arg,
@@ -391,35 +387,44 @@ call_stmt:
 
             $$ = (Node *)n;
         }
-    | CALL expr_var '.' expr_func_norm
+    | CALL expr '.' expr
         {
             cypher_call *n = make_ag_node(cypher_call);
-            FuncCall *fc = (FuncCall*)$4;
-            ColumnRef *cr = (ColumnRef*)$2;
-            List *fields = cr->fields;
-            String *string = linitial(fields);
 
-            /*
-             * A function can only be qualified with a single schema. So, we
-             * check to see that the function isn't already qualified. There
-             * may be unforeseen cases where we might need to remove this in
-             * the future.
-             */
-            if (list_length(fc->funcname) == 1)
+            if (IsA($4, FuncCall) && IsA($2, ColumnRef))
             {
-                fc->funcname = lcons(string, fc->funcname);
-                $$ = (Node*)fc;
+                FuncCall *fc = (FuncCall*)$4;
+                ColumnRef *cr = (ColumnRef*)$2;
+                List *fields = cr->fields;
+                Value *string = linitial(fields);
+
+                /*
+                 * A function can only be qualified with a single schema. So, we
+                 * check to see that the function isn't already qualified. There
+                 * may be unforeseen cases where we might need to remove this in
+                 * the future.
+                 */
+                if (list_length(fc->funcname) == 1)
+                {
+                    fc->funcname = lcons(string, fc->funcname);
+                    $$ = (Node*)fc;
+                }
+                else
+                    ereport(ERROR,
+                            (errcode(ERRCODE_SYNTAX_ERROR),
+                             errmsg("function already qualified"),
+                             ag_scanner_errposition(@1, scanner)));
+
+                n->funccall = fc;
+                $$ = (Node *)n;
             }
             else
             {
                 ereport(ERROR,
                         (errcode(ERRCODE_SYNTAX_ERROR),
-                            errmsg("function already qualified"),
-                            ag_scanner_errposition(@1, scanner)));
+                         errmsg("CALL statement must be a qualified function"),
+                         ag_scanner_errposition(@1, scanner)));
             }
-
-            n->funccall = fc;
-            $$ = (Node *)n;
         }
     | CALL expr_func_norm YIELD yield_item_list where_opt
         {
@@ -429,37 +434,46 @@ call_stmt:
             n->where = $5;
             $$ = (Node *)n;
         }
-    | CALL expr_var '.' expr_func_norm YIELD yield_item_list where_opt
+    | CALL expr '.' expr YIELD yield_item_list where_opt
         {
             cypher_call *n = make_ag_node(cypher_call);
-            FuncCall *fc = (FuncCall*)$4;
-            ColumnRef *cr = (ColumnRef*)$2;
-            List *fields = cr->fields;
-            String *string = linitial(fields);
 
-            /*
-             * A function can only be qualified with a single schema. So, we
-             * check to see that the function isn't already qualified. There
-             * may be unforeseen cases where we might need to remove this in
-             * the future.
-             */
-            if (list_length(fc->funcname) == 1)
+            if (IsA($4, FuncCall) && IsA($2, ColumnRef))
             {
-                fc->funcname = lcons(string, fc->funcname);
-                $$ = (Node*)fc;
+                FuncCall *fc = (FuncCall*)$4;
+                ColumnRef *cr = (ColumnRef*)$2;
+                List *fields = cr->fields;
+                Value *string = linitial(fields);
+
+                /*
+                 * A function can only be qualified with a single schema. So, we
+                 * check to see that the function isn't already qualified. There
+                 * may be unforeseen cases where we might need to remove this in
+                 * the future.
+                 */
+                if (list_length(fc->funcname) == 1)
+                {
+                    fc->funcname = lcons(string, fc->funcname);
+                    $$ = (Node*)fc;
+                }
+                else
+                    ereport(ERROR,
+                            (errcode(ERRCODE_SYNTAX_ERROR),
+                             errmsg("function already qualified"),
+                             ag_scanner_errposition(@1, scanner)));
+
+                n->funccall = fc;
+                n->yield_items = $6;
+                n->where = $7;
+                $$ = (Node *)n;
             }
             else
             {
                 ereport(ERROR,
                         (errcode(ERRCODE_SYNTAX_ERROR),
-                            errmsg("function already qualified"),
-                            ag_scanner_errposition(@1, scanner)));
+                         errmsg("CALL statement must be a qualified function"),
+                         ag_scanner_errposition(@1, scanner)));
             }
-
-            n->funccall = fc;
-            n->yield_items = $6;
-            n->where = $7;
-            $$ = (Node *)n;
         }
     ;
 
@@ -633,7 +647,9 @@ subquery_stmt_no_return:
         }
     | subquery_stmt_no_return UNION all_or_distinct subquery_stmt_no_return
         {
-            $$ = list_make1(make_subquery_returnless_set_op(SETOP_UNION, $3, $1, $4));
+            ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+                errmsg("Subquery UNION without returns not yet implemented"),
+                ag_scanner_errposition(@2, scanner)));
         }
     ;
 
@@ -726,7 +742,7 @@ cypher_varlen_opt:
                 A_Const    *lidx = (A_Const *) n->lidx;
                 A_Const    *uidx = (A_Const *) n->uidx;
 
-                if (lidx->val.ival.ival > uidx->val.ival.ival)
+                if (lidx->val.val.ival > uidx->val.val.ival)
                     ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
                                     errmsg("invalid range"),
                                     ag_scanner_errposition(@2, scanner)));
@@ -1736,7 +1752,7 @@ expr:
             {
                 ColumnRef *cr = (ColumnRef*)$3;
                 List *fields = cr->fields;
-                String *string = linitial(fields);
+                Value *string = linitial(fields);
 
                 $$ = append_indirection($1, (Node*)string);
             }
@@ -1751,7 +1767,7 @@ expr:
                 FuncCall *fc = (FuncCall*)$3;
                 ColumnRef *cr = (ColumnRef*)$1;
                 List *fields = cr->fields;
-                String *string = linitial(fields);
+                Value *string = linitial(fields);
 
                 /*
                  * A function can only be qualified with a single schema. So, we
@@ -1775,7 +1791,7 @@ expr:
             {
                 ColumnRef *cr = (ColumnRef*)$3;
                 List *fields = cr->fields;
-                String *string = linitial(fields);
+                Value *string = linitial(fields);
 
                 $$ = append_indirection($1, (Node*)string);
             }
@@ -1791,12 +1807,10 @@ expr:
              * supported
              */
             else
-            {
                 ereport(ERROR,
                         (errcode(ERRCODE_SYNTAX_ERROR),
                          errmsg("invalid indirection syntax"),
                          ag_scanner_errposition(@1, scanner)));
-            }
         }
     | expr '-' '>' expr %prec '.'
         {
@@ -2337,7 +2351,7 @@ var_name:
             ereport(ERROR,
                 (errcode(ERRCODE_SYNTAX_ERROR),
                     errmsg("%s is only for internal use", AGE_DEFAULT_PREFIX),
-                    ag_scanner_errposition(@1, scanner)));
+                    ag_scanner_errposition(@1, scanner)));   
         }
     }
     ;
@@ -2550,14 +2564,14 @@ static Node *do_negate(Node *n, int location)
         /* report the constant's location as that of the '-' sign */
         c->location = location;
 
-        if (c->val.ival.type == T_Integer)
+        if (c->val.type == T_Integer)
         {
-            c->val.ival.ival = -c->val.ival.ival;
+            c->val.val.ival = -c->val.val.ival;
             return n;
         }
-        else if (c->val.fval.type == T_Float)
+        else if (c->val.type == T_Float)
         {
-            do_negate_float(&c->val.fval);
+            do_negate_float(&c->val);
             return n;
         }
     }
@@ -2565,27 +2579,14 @@ static Node *do_negate(Node *n, int location)
     return (Node *)makeSimpleA_Expr(AEXPR_OP, "-", NULL, n, location);
 }
 
-static void do_negate_float(Float *v)
+static void do_negate_float(Value *v)
 {
-    char *oldval = NULL;
-
-    Assert(v != NULL);
     Assert(IsA(v, Float));
 
-    oldval = v->fval;
-
-    if (*oldval == '+')
-    {
-        oldval++;
-    }
-    if (*oldval == '-')
-    {
-        v->fval = oldval+1;    /* just strip the '-' */
-    }
+    if (v->val.str[0] == '-')
+        v->val.str = v->val.str + 1; /* just strip the '-' */
     else
-    {
-        v->fval = psprintf("-%s", oldval);
-    }
+        v->val.str = psprintf("-%s", v->val.str);
 }
 
 /*
@@ -2619,56 +2620,60 @@ static Node *append_indirection(Node *expr, Node *selector)
 
 static Node *make_int_const(int i, int location)
 {
-    A_Const *n = makeNode(A_Const);
+    A_Const *n;
 
-    n->val.ival.type = T_Integer;
-    n->val.ival.ival = i;
+    n = makeNode(A_Const);
+    n->val.type = T_Integer;
+    n->val.val.ival = i;
     n->location = location;
 
-    return (Node *) n;
+    return (Node *)n;
 }
 
 static Node *make_float_const(char *s, int location)
 {
-    A_Const *n = makeNode(A_Const);
+    A_Const *n;
 
-    n->val.fval.type = T_Float;
-    n->val.fval.fval = s;
+    n = makeNode(A_Const);
+    n->val.type = T_Float;
+    n->val.val.str = s;
     n->location = location;
 
-    return (Node *) n;
+    return (Node *)n;
 }
 
 static Node *make_string_const(char *s, int location)
 {
-    A_Const *n = makeNode(A_Const);
+    A_Const *n;
 
-    n->val.sval.type = T_String;
-    n->val.sval.sval = s;
+    n = makeNode(A_Const);
+    n->val.type = T_String;
+    n->val.val.str = s;
     n->location = location;
 
-    return (Node *) n;
+    return (Node *)n;
 }
 
 static Node *make_bool_const(bool b, int location)
 {
-    A_Const *n = makeNode(A_Const);
+    cypher_bool_const *n;
 
-    n->val.boolval.type = T_Boolean;
-    n->val.boolval.boolval = b;
+    n = make_ag_node(cypher_bool_const);
+    n->boolean = b;
     n->location = location;
 
-    return (Node *) n;
+    return (Node *)n;
 }
 
 static Node *make_null_const(int location)
 {
-    A_Const *n = makeNode(A_Const);
+    A_Const *n;
 
-    n->isnull = true;
+    n = makeNode(A_Const);
+    n->val.type = T_Null;
     n->location = location;
 
-    return (Node *) n;
+    return (Node *)n;
 }
 
 /*
@@ -2700,7 +2705,7 @@ static Node *make_function_expr(List *func_name, List *exprs, int location)
         char *name;
 
         /* get the name of the function */
-        name = ((String*)linitial(func_name))->sval;
+        name = ((Value*)linitial(func_name))->val.str;
 
         /*
          * Check for openCypher functions that are directly mapped to PG
@@ -2755,7 +2760,7 @@ static Node *make_star_function_expr(List *func_name, List *exprs, int location)
         char *name;
 
         /* get the name of the function */
-        name = ((String*)linitial(func_name))->sval;
+        name = ((Value*)linitial(func_name))->val.str;
 
         /*
          * Check for openCypher functions that are directly mapped to PG
@@ -2812,7 +2817,7 @@ static Node *make_distinct_function_expr(List *func_name, List *exprs, int locat
         char *name;
 
         /* get the name of the function */
-        name = ((String*)linitial(func_name))->sval;
+        name = ((Value*)linitial(func_name))->val.str;
 
         /*
          * Check for openCypher functions that are directly mapped to PG
@@ -2956,24 +2961,10 @@ static Node *make_set_op(SetOperation op, bool all_or_distinct, List *larg,
     return (Node *) n;
 }
 
-/*set operation function node to make a returnless set op node for subqueries*/
-static Node *make_subquery_returnless_set_op(SetOperation op, bool all_or_distinct, List *larg,
-                         List *rarg)
-{
-    cypher_return *n = make_ag_node(cypher_return);
-
-    n->op = op;
-    n->all_or_distinct = all_or_distinct;
-    n->returnless_union = true;
-    n->larg = (List *) larg;
-    n->rarg = (List *) rarg;
-    return (Node *) n;
-}
-
 /* check if A_Expr is a comparison expression */
 static bool is_A_Expr_a_comparison_operation(cypher_comparison_aexpr *a)
 {
-    String *v = NULL;
+    Value *v = NULL;
     char *opr_name = NULL;
 
     /* we don't support qualified comparison operators */
@@ -2989,7 +2980,7 @@ static bool is_A_Expr_a_comparison_operation(cypher_comparison_aexpr *a)
     Assert(v->type == T_String);
 
     /* get the string value */
-    opr_name = v->sval;
+    opr_name = v->val.str;
 
     /* verify it is a comparison operation */
     if (strcmp(opr_name, "<") == 0)
@@ -3311,7 +3302,7 @@ static Node *build_list_comprehension_node(ColumnRef *cref, Node *expr,
     ResTarget *res = NULL;
     cypher_unwind *unwind = NULL;
     char *var_name = NULL;
-    String *val;
+    Value *val;
 
     /* Extract name from cref */
     val = linitial(cref->fields);
@@ -3322,7 +3313,7 @@ static Node *build_list_comprehension_node(ColumnRef *cref, Node *expr,
                 (errmsg_internal("unexpected Node for cypher_clause")));
     }
 
-    var_name = val->sval;
+    var_name = val->val.str;
 
     /*
      * Build the ResTarget node for the UNWIND variable var_name attached to

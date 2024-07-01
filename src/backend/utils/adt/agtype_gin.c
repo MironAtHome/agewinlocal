@@ -27,7 +27,6 @@
  */
 
 #include "postgres.h"
-#include "varatt.h"
 
 #include "access/gin.h"
 #include "access/hash.h"

@@ -1349,18 +1349,18 @@ $$) AS (toBoolean agtype);
 SELECT * FROM cypher('expr', $$
     RETURN toBoolean("false")
 $$) AS (toBoolean agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toBoolean(1)
+$$) AS (toBoolean agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toBoolean(0)
+$$) AS (toBoolean agtype);
 -- should return null
 SELECT * FROM cypher('expr', $$
     RETURN toBoolean("false_")
 $$) AS (toBoolean agtype);
 SELECT * FROM cypher('expr', $$
     RETURN toBoolean(null)
-$$) AS (toBoolean agtype);
-SELECT * FROM cypher('expr', $$
-    RETURN toBoolean(1)
-$$) AS (toBoolean agtype);
-SELECT * FROM cypher('expr', $$
-    RETURN toBoolean(0)
 $$) AS (toBoolean agtype);
 -- should fail
 SELECT * FROM cypher('expr', $$

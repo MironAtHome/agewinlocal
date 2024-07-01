@@ -39,6 +39,7 @@ def parseAgeValue(value, cursor=None):
     global resultHandler
     if (resultHandler == None):
         resultHandler = Antlr4ResultHandler(None)
+
     try:
         return resultHandler.parse(value)
     except Exception as ex:

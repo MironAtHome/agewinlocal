@@ -21,15 +21,27 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "access/xact.h"
+#include "catalog/dependency.h"
+#include "catalog/objectaddress.h"
+#include "commands/defrem.h"
 #include "commands/schemacmds.h"
 #include "commands/tablecmds.h"
+#include "fmgr.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "nodes/nodes.h"
+#include "nodes/parsenodes.h"
+#include "nodes/pg_list.h"
+#include "nodes/value.h"
 #include "parser/parser.h"
+#include "utils/rel.h"
+#include "utils/relcache.h"
 
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
 #include "commands/label_commands.h"
+#include "utils/graphid.h"
 #include "utils/name_validation.h"
 
 /*
@@ -136,7 +148,7 @@ static Oid create_schema_for_graph(const Name graph_name)
     integer = SystemTypeName("int4");
     data_type = makeDefElem("as", (Node *)integer, -1);
     maxvalue = makeDefElem("maxvalue", (Node *)makeInteger(LABEL_ID_MAX), -1);
-    cycle = makeDefElem("cycle", (Node *)makeBoolean(true), -1);
+    cycle = makeDefElem("cycle", (Node *)makeInteger(true), -1);
     seq_stmt->options = list_make3(data_type, maxvalue, cycle);
     seq_stmt->ownerId = InvalidOid;
     seq_stmt->for_identity = false;
@@ -186,7 +198,7 @@ Datum drop_graph(PG_FUNCTION_ARGS)
 static void drop_schema_for_graph(char *graph_name_str, const bool cascade)
 {
     DropStmt *drop_stmt;
-    String *schema_name;
+    Value *schema_name;
     List *label_id_seq_name;
     DropBehavior behavior;
 

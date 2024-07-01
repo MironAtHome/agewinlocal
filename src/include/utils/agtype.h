@@ -31,6 +31,7 @@
 #ifndef AG_AGTYPE_H
 #define AG_AGTYPE_H
 
+#include "lib/stringinfo.h"
 #include "utils/array.h"
 #include "utils/numeric.h"
 
@@ -39,7 +40,7 @@
 /* Tokens used when sequentially processing an agtype value */
 typedef enum
 {
-    WAGT_DONE = 0x0,
+    WAGT_DONE,
     WAGT_KEY,
     WAGT_VALUE,
     WAGT_ELEM,

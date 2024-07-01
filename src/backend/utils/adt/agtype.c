@@ -29,8 +29,6 @@
  */
 
 #include "postgres.h"
-#include "varatt.h"
-#include <math.h>
 
 #include <float.h>
 
@@ -45,6 +43,7 @@
 #include "parser/parse_coerce.h"
 #include "utils/builtins.h"
 #include "utils/float.h"
+#include "utils/int8.h"
 #include "utils/lsyscache.h"
 #include "utils/snapmgr.h"
 #include "utils/typcache.h"
@@ -967,13 +966,13 @@ static void agtype_in_scalar(void *pstate, char *token,
     case AGTYPE_TOKEN_INTEGER:
         Assert(token != NULL);
         v.type = AGTV_INTEGER;
-        v.val.int_value = pg_strtoint64(token);
+        scanint8(token, false, &v.val.int_value);
         break;
     case AGTYPE_TOKEN_FLOAT:
         Assert(token != NULL);
         v.type = AGTV_FLOAT;
         v.val.float_value = float8in_internal(token, NULL, "double precision",
-                                              token, NULL);
+                                              token);
         break;
     case AGTYPE_TOKEN_NUMERIC:
         Assert(token != NULL);
@@ -1978,7 +1977,7 @@ Datum _agtype_build_path(PG_FUNCTION_ARGS)
      */
     if (nargs >= 1 && nargs <= 3)
     {
-        i = 0;
+        int i = 0;
 
         for (i = 0; i < nargs; i++)
         {
@@ -2211,7 +2210,7 @@ Datum _agtype_build_vertex(PG_FUNCTION_ARGS)
 
     if (fcinfo->args[2].isnull)
     {
-        bstate = init_agtype_build_state(0, AGT_FOBJECT);
+        agtype_build_state *bstate = init_agtype_build_state(0, AGT_FOBJECT);
         properties = build_agtype(bstate);
         pfree_agtype_build_state(bstate);
     }
@@ -2307,7 +2306,7 @@ Datum _agtype_build_edge(PG_FUNCTION_ARGS)
     /* if the properties object is null, push an empty object */
     if (fcinfo->args[4].isnull)
     {
-        bstate = init_agtype_build_state(0, AGT_FOBJECT);
+        agtype_build_state *bstate = init_agtype_build_state(0, AGT_FOBJECT);
         properties = build_agtype(bstate);
         pfree_agtype_build_state(bstate);
     }
@@ -3650,14 +3649,9 @@ Datum agtype_object_field_impl(FunctionCallInfo fcinfo, agtype *agtype_in,
 
     if (AGT_ROOT_IS_SCALAR(agtype_in))
     {
-        agtype_value *process_agtv = extract_entity_properties(agtype_in,
-                                                               false);
-        if (!process_agtv)
-        {
-            PG_RETURN_NULL();
-        }
-
-        process_agtype = agtype_value_to_agtype(process_agtv);
+        process_agtype =
+            agtype_value_to_agtype(extract_entity_properties(agtype_in,
+                                                             false));
     }
     else
     {
@@ -3692,13 +3686,13 @@ Datum agtype_object_field_agtype(PG_FUNCTION_ARGS)
 
     if (key_value->type == AGTV_INTEGER)
     {
-        PG_RETURN_TEXT_P((const void*)agtype_array_element_impl(fcinfo, agt,
+        PG_RETURN_TEXT_P(agtype_array_element_impl(fcinfo, agt,
                                                    key_value->val.int_value,
                                                    false));
     }
     else if (key_value->type == AGTV_STRING)
     {
-        AG_RETURN_AGTYPE_P((const void*)agtype_object_field_impl(fcinfo, agt,
+        AG_RETURN_AGTYPE_P(agtype_object_field_impl(fcinfo, agt,
                                                     key_value->val.string.val,
                                                     key_value->val.string.len,
                                                     false));
@@ -3726,13 +3720,13 @@ Datum agtype_object_field_text_agtype(PG_FUNCTION_ARGS)
 
     if (key_value->type == AGTV_INTEGER)
     {
-        PG_RETURN_TEXT_P((const void*)agtype_array_element_impl(fcinfo, agt,
+        PG_RETURN_TEXT_P(agtype_array_element_impl(fcinfo, agt,
                                                    key_value->val.int_value,
                                                    true));
     }
     else if (key_value->type == AGTV_STRING)
     {
-        AG_RETURN_AGTYPE_P((const void*)agtype_object_field_impl(fcinfo, agt,
+        AG_RETURN_AGTYPE_P(agtype_object_field_impl(fcinfo, agt,
                                                     key_value->val.string.val,
                                                     key_value->val.string.len,
                                                     true));
@@ -3750,7 +3744,7 @@ Datum agtype_object_field(PG_FUNCTION_ARGS)
     agtype *agt = AG_GET_ARG_AGTYPE_P(0);
     text *key = PG_GETARG_TEXT_PP(1);
 
-    AG_RETURN_AGTYPE_P((const void*)agtype_object_field_impl(fcinfo, agt, VARDATA_ANY(key),
+    AG_RETURN_AGTYPE_P(agtype_object_field_impl(fcinfo, agt, VARDATA_ANY(key),
                                                 VARSIZE_ANY_EXHDR(key),
                                                 false));
 }
@@ -3762,7 +3756,7 @@ Datum agtype_object_field_text(PG_FUNCTION_ARGS)
     agtype *agt = AG_GET_ARG_AGTYPE_P(0);
     text *key = PG_GETARG_TEXT_PP(1);
 
-    PG_RETURN_TEXT_P((const void*)agtype_object_field_impl(fcinfo, agt, VARDATA_ANY(key),
+    PG_RETURN_TEXT_P(agtype_object_field_impl(fcinfo, agt, VARDATA_ANY(key),
                                               VARSIZE_ANY_EXHDR(key), true));
 }
 
@@ -3773,8 +3767,7 @@ Datum agtype_array_element(PG_FUNCTION_ARGS)
     agtype *agt = AG_GET_ARG_AGTYPE_P(0);
     int elem = PG_GETARG_INT32(1);
 
-    AG_RETURN_AGTYPE_P((const void*)
-        agtype_array_element_impl(fcinfo, agt, elem, false));
+    AG_RETURN_AGTYPE_P(agtype_array_element_impl(fcinfo, agt, elem, false));
 }
 
 PG_FUNCTION_INFO_V1(agtype_array_element_text);
@@ -3784,8 +3777,7 @@ Datum agtype_array_element_text(PG_FUNCTION_ARGS)
     agtype *agt = AG_GET_ARG_AGTYPE_P(0);
     int elem = PG_GETARG_INT32(1);
 
-    PG_RETURN_TEXT_P((const void*)
-        agtype_array_element_impl(fcinfo, agt, elem, true));
+    PG_RETURN_TEXT_P(agtype_array_element_impl(fcinfo, agt, elem, true));
 }
 
 PG_FUNCTION_INFO_V1(agtype_access_operator);
@@ -4383,11 +4375,8 @@ Datum agtype_hash_cmp(PG_FUNCTION_ARGS)
     agtype_value *r;
     uint64 seed = 0xF0F0F0F0;
 
-    /* this function returns INTEGER which is 32 bits */
     if (PG_ARGISNULL(0))
-    {
-        PG_RETURN_INT32(0);
-    }
+        PG_RETURN_INT16(0);
 
     agt = AG_GET_ARG_AGTYPE_P(0);
 
@@ -4410,7 +4399,7 @@ Datum agtype_hash_cmp(PG_FUNCTION_ARGS)
         seed = LEFT_ROTATE(seed, 1);
     }
 
-    PG_RETURN_INT32(hash);
+    PG_RETURN_INT16(hash);
 }
 
 /* Comparison function for btree Indexes */
@@ -4421,25 +4410,18 @@ Datum agtype_btree_cmp(PG_FUNCTION_ARGS)
     agtype *agtype_lhs;
     agtype *agtype_rhs;
 
-    /* this function returns INTEGER which is 32bits */
     if (PG_ARGISNULL(0) && PG_ARGISNULL(1))
-    {
-        PG_RETURN_INT32(0);
-    }
+        PG_RETURN_INT16(0);
     else if (PG_ARGISNULL(0))
-    {
-        PG_RETURN_INT32(1);
-    }
+        PG_RETURN_INT16(1);
     else if (PG_ARGISNULL(1))
-    {
-        PG_RETURN_INT32(-1);
-    }
+        PG_RETURN_INT16(-1);
 
     agtype_lhs = AG_GET_ARG_AGTYPE_P(0);
     agtype_rhs = AG_GET_ARG_AGTYPE_P(1);
 
-    PG_RETURN_INT32(compare_agtype_containers_orderability(&agtype_lhs->root,
-                                                           &agtype_rhs->root));
+    PG_RETURN_INT16(compare_agtype_containers_orderability(&agtype_lhs->root,
+                                                     &agtype_rhs->root));
 }
 
 PG_FUNCTION_INFO_V1(agtype_typecast_numeric);
@@ -5519,6 +5501,7 @@ Datum age_last(PG_FUNCTION_ARGS)
 }
 
 
+
 PG_FUNCTION_INFO_V1(age_tail);
 /*
  * Returns a list  containing all the elements, excluding the first one, from a list.
@@ -5797,108 +5780,94 @@ Datum age_toboolean(PG_FUNCTION_ARGS)
 
 PG_FUNCTION_INFO_V1(age_tobooleanlist);
 /*
- * Converts a list of values and returns a list of boolean values. 
- * If any values are not convertible to boolean they will be null in the list returned.
- */
+ * Converts a list of values and returns a list of boolean values. If any values are not convertible
+ * to boolean, they will be null in the list returned.
+ * */
 Datum age_tobooleanlist(PG_FUNCTION_ARGS)
 {
-    agtype *agt_arg = NULL;
-    agtype_in_state agis_result;
-    agtype_value *elem;
-    agtype_value bool_elem;
+	agtype *agt_arg = NULL;
+	agtype_in_state agis_result;
+	agtype_value *elem;
+   	agtype_value bool_elem;
     char *string = NULL;
     int count;
     int i;
 
-    /* check for null */
+	/* check for null */
     if (PG_ARGISNULL(0))
         PG_RETURN_NULL();
 
     agt_arg = AG_GET_ARG_AGTYPE_P(0);
     /* check for an array */
     if (!AGT_ROOT_IS_ARRAY(agt_arg) || AGT_ROOT_IS_SCALAR(agt_arg))
-        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("toBooleanList() argument must resolve to a list or null")));
+		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("toBooleanList() argument must resolve to a list or null")));
 
     count = AGT_ROOT_COUNT(agt_arg);
 
     /* if we have an empty list or only one element in the list, return null */
     if (count == 0)
-        PG_RETURN_NULL();
-    
-    /* clear the result structure */
+		PG_RETURN_NULL();
+
+    /* clear the result structure  */
     MemSet(&agis_result, 0, sizeof(agtype_in_state));
 
-    /* push the beginning of the array */
+    /* push the beginning of the array  */
     agis_result.res = push_agtype_value(&agis_result.parse_state,
-                                        WAGT_BEGIN_ARRAY, NULL);
+		WAGT_BEGIN_ARRAY, NULL);
 
-    /* iterate through the list */
-    for (i = 0; i < count; i++)
-    {
-        /* check element's type, it's value, and convert it to boolean if possible. */
-        elem = get_ith_agtype_value_from_container(&agt_arg->root, i);
-        bool_elem.type = AGTV_BOOL;
+	/* iterate through the list */
+	for (i = 0; i < count; i++)
+	{
+		elem = get_ith_agtype_value_from_container(&agt_arg->root, i);
+		bool_elem.type = AGTV_BOOL;
 
-        switch (elem->type)
-        {
-        case AGTV_STRING:
-            
-            string = elem->val.string.val;
+		switch (elem->type)
+		{
+			case AGTV_STRING:
+				string = elem->val.string.val;
+				if (pg_strcasecmp(string, "true") == 0)
+				{
+					bool_elem.val.boolean = true;
+					agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM, &bool_elem);
+				}
+				else if (pg_strcasecmp(string, "false") == 0)
+				{
+					bool_elem.val.boolean = false;
+                	agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM, &bool_elem);
+				}
+				else
+				{
+					bool_elem.type = AGTV_NULL;
+                	agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM, &bool_elem);
+				}
+				break;
 
-            if (pg_strcasecmp(string, "true") == 0)
-            {
-                bool_elem.val.boolean = true;
+
+			case AGTV_BOOL:
+				bool_elem.val.boolean = elem->val.boolean;
+            	agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM, &bool_elem);
+				break;
+
+            case AGTV_INTEGER:
+
+                bool_elem.val.boolean = DatumGetBool(DirectFunctionCall1(int4_bool,
+                                                                         Int64GetDatum(elem->val.int_value)));
                 agis_result.res = push_agtype_value(&agis_result.parse_state,
                                                     WAGT_ELEM, &bool_elem);
-            }
-            else if (pg_strcasecmp(string, "false") == 0)
-            {
-                bool_elem.val.boolean = false;
-                agis_result.res = push_agtype_value(&agis_result.parse_state,
-                                                    WAGT_ELEM, &bool_elem);
-            }
-            else
-            {
-                bool_elem.type = AGTV_NULL;
-                agis_result.res = push_agtype_value(&agis_result.parse_state,
-                                                    WAGT_ELEM, &bool_elem);
-            }
-            
-            break;
-        
-        case AGTV_BOOL:
-            
-            bool_elem.val.boolean = elem->val.boolean;
-            agis_result.res = push_agtype_value(&agis_result.parse_state,
-                                                WAGT_ELEM, &bool_elem);
+                break;
 
-            break;
-        
-        case AGTV_INTEGER:
+			default:
+				bool_elem.type = AGTV_NULL;
+            	agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM, &bool_elem);
+				break;
+		}
+	}
 
-            bool_elem.val.boolean = DatumGetBool(DirectFunctionCall1(int4_bool,
-                                                                     Int64GetDatum(elem->val.int_value)));
-            agis_result.res = push_agtype_value(&agis_result.parse_state,
-                                                WAGT_ELEM, &bool_elem);
+	/* push the end of the array */
+	agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_END_ARRAY, NULL);
 
-            break;
-
-        default:
-            
-            bool_elem.type = AGTV_NULL;
-            agis_result.res = push_agtype_value(&agis_result.parse_state,
-                                                WAGT_ELEM, &bool_elem);
-            
-            break;
-        }
-    }
-
-    /* push the end of the array */
-    agis_result.res = push_agtype_value(&agis_result.parse_state,
-                                        WAGT_END_ARRAY, NULL);
-
-    PG_RETURN_POINTER(agtype_value_to_agtype(agis_result.res));
+	PG_RETURN_POINTER(agtype_value_to_agtype(agis_result.res));
 }
 
 PG_FUNCTION_INFO_V1(age_tofloat);
@@ -6037,7 +6006,7 @@ Datum age_tofloat(PG_FUNCTION_ARGS)
 
 PG_FUNCTION_INFO_V1(age_tofloatlist);
 /*
- * toFloatList() converts a list of values and returns a list of floating point values.
+ * toFloatList() converts a list of values and returns a list of floating point values. 
  * If any values are not convertible to floating point they will be null in the list returned.
  */
 Datum age_tofloatlist(PG_FUNCTION_ARGS)
@@ -6050,7 +6019,7 @@ Datum age_tofloatlist(PG_FUNCTION_ARGS)
     int count;
     int i;
     bool is_valid = false;
-    float8 float_num;
+    float float_num;
     char buffer[64];
 
     /* check for null */
@@ -6059,22 +6028,17 @@ Datum age_tofloatlist(PG_FUNCTION_ARGS)
         PG_RETURN_NULL();
     }
     agt_arg = AG_GET_ARG_AGTYPE_P(0);
-
     /* check for an array */
     if (!AGT_ROOT_IS_ARRAY(agt_arg) || AGT_ROOT_IS_SCALAR(agt_arg))
-    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("toFloatList() argument must resolve to a list or null")));
-    }
 
     count = AGT_ROOT_COUNT(agt_arg);
 
     /* if we have an empty list or only one element in the list, return null */
     if (count == 0)
-    {
         PG_RETURN_NULL();
-    }
-
+    
     /* clear the result structure */
     MemSet(&agis_result, 0, sizeof(agtype_in_state));
 
@@ -6085,7 +6049,7 @@ Datum age_tofloatlist(PG_FUNCTION_ARGS)
     /* iterate through the list */
     for (i = 0; i < count; i++)
     {
-        /* TODO: check element's type, it's value, and convert it to float if possible. */
+        /* check element's type, it's value, and convert it to float if possible. */
         elem = get_ith_agtype_value_from_container(&agt_arg->root, i);
         float_elem.type = AGTV_FLOAT;
 
@@ -6098,15 +6062,17 @@ Datum age_tofloatlist(PG_FUNCTION_ARGS)
             {
                 float_elem.type = AGTV_FLOAT;
                 float_elem.val.float_value = float8in_internal_null(string, NULL, "double precision",
-                                            string, &is_valid);
-                agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM, &float_elem);
+                                            string, &is_valid); 
+                agis_result.res = push_agtype_value(&agis_result.parse_state,
+                                                    WAGT_ELEM, &float_elem);
             }
-            else
+            else 
             {
                 float_elem.type = AGTV_NULL;
-                agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM, &float_elem);
+                agis_result.res = push_agtype_value(&agis_result.parse_state,
+                                                    WAGT_ELEM, &float_elem);
             }
-
+            
             break;
 
         case AGTV_FLOAT:
@@ -6116,19 +6082,22 @@ Datum age_tofloatlist(PG_FUNCTION_ARGS)
             sprintf(buffer, "%f", float_num);
             string = buffer;
             float_elem.val.float_value = float8in_internal_null(string, NULL, "double precision", string, &is_valid);
-            agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM, &float_elem);
+            agis_result.res = push_agtype_value(&agis_result.parse_state,
+                                                WAGT_ELEM, &float_elem);
 
             break;
-
+            
         default:
 
             float_elem.type = AGTV_NULL;
-            agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM, &float_elem);
+            agis_result.res = push_agtype_value(&agis_result.parse_state,
+                                                WAGT_ELEM, &float_elem);
 
             break;
         }
     }
-    agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_END_ARRAY, NULL);
+    agis_result.res = push_agtype_value(&agis_result.parse_state,
+                                        WAGT_END_ARRAY, NULL);
 
     PG_RETURN_POINTER(agtype_value_to_agtype(agis_result.res));
 }
@@ -6222,7 +6191,6 @@ Datum age_tointeger(PG_FUNCTION_ARGS)
         }
         else if (type == CSTRINGOID || type == TEXTOID)
         {
-            char *endptr;
             if (type == CSTRINGOID)
             {
                 string = DatumGetCString(arg);
@@ -6233,16 +6201,12 @@ Datum age_tointeger(PG_FUNCTION_ARGS)
             }
 
             /* convert it if it is a regular integer string */
-            result = strtoi64(string, &endptr, 10);
-
+            is_valid = scanint8(string, true, &result);
             /*
              * If it isn't an integer string, try converting it as a float
              * string.
              */
-            result = float8in_internal_null(string, NULL, "double precision",
-                                            string, &is_valid);
-
-            if (*endptr != '\0')
+            if (!is_valid)
             {
                 float8 f;
 
@@ -6253,7 +6217,7 @@ Datum age_tointeger(PG_FUNCTION_ARGS)
                  * return null.
                  */
                 if (!is_valid || isnan(f) || isinf(f) ||
-                    f < PG_INT64_MIN || f > (double)PG_INT64_MAX)
+                    f < (float8)PG_INT64_MIN || f > (float8)PG_INT64_MAX)
                 {
                     PG_RETURN_NULL();
                 }
@@ -6314,18 +6278,16 @@ Datum age_tointeger(PG_FUNCTION_ARGS)
         }
         else if (agtv_value->type == AGTV_STRING)
         {
-            char *endptr;
             /* we need a null terminated cstring */
             string = strndup(agtv_value->val.string.val,
                              agtv_value->val.string.len);
             /* convert it if it is a regular integer string */
-            result = strtoi64(string, &endptr, 10);
-
+            is_valid = scanint8(string, true, &result);
             /*
              * If it isn't an integer string, try converting it as a float
              * string.
              */
-            if (*endptr != '\0')
+            if (!is_valid)
             {
                 float8 f;
 
@@ -6366,7 +6328,7 @@ Datum age_tointeger(PG_FUNCTION_ARGS)
 
 PG_FUNCTION_INFO_V1(age_tointegerlist);
 /*
- * toIntegerList() converts a list of values and returns a list of integers point values.
+ * toIntegerList() converts a list of values and returns a list of integers point values. 
  * If any values are not convertible to integer they will be null in the list returned.
  */
 Datum age_tointegerlist(PG_FUNCTION_ARGS)
@@ -6390,18 +6352,14 @@ Datum age_tointegerlist(PG_FUNCTION_ARGS)
     agt_arg = AG_GET_ARG_AGTYPE_P(0);
     /* check for an array */
     if (!AGT_ROOT_IS_ARRAY(agt_arg) || AGT_ROOT_IS_SCALAR(agt_arg))
-    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("toIntegerList() argument must resolve to a list or null")));
-    }
 
     count = AGT_ROOT_COUNT(agt_arg);
 
     /* if we have an empty list or only one element in the list, return null */
     if (count == 0)
-    {
         PG_RETURN_NULL();
-    }
 
     /* clear the result structure */
     MemSet(&agis_result, 0, sizeof(agtype_in_state));
@@ -6424,12 +6382,13 @@ Datum age_tointegerlist(PG_FUNCTION_ARGS)
             string = elem->val.string.val;
             integer_elem.type = AGTV_INTEGER;
             integer_elem.val.int_value = atoi(string);
-
+            
             if (*string == '+' || *string == '-' || (*string >= '0' && *string <= '9'))
             {
                 is_float = 1;
                 while (*(++string))
                 {
+
                     if(!(*string >= '0' && *string <= '9'))
                     {
                         if(*string == '.' && is_float)
@@ -6442,7 +6401,7 @@ Datum age_tointegerlist(PG_FUNCTION_ARGS)
                             break;
                         }
                     }
-                }
+                }   
             }
             else
             {
@@ -6451,7 +6410,7 @@ Datum age_tointegerlist(PG_FUNCTION_ARGS)
             }
 
             agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM, &integer_elem);
-
+           
             break;
 
         case AGTV_FLOAT:
@@ -6585,7 +6544,7 @@ PG_FUNCTION_INFO_V1(graphid_to_agtype);
 
 Datum graphid_to_agtype(PG_FUNCTION_ARGS)
 {
-    PG_RETURN_POINTER((const void *) integer_to_agtype(AG_GETARG_GRAPHID(0)));
+    PG_RETURN_POINTER(integer_to_agtype(AG_GETARG_GRAPHID(0)));
 }
 
 PG_FUNCTION_INFO_V1(agtype_to_graphid);
@@ -6601,7 +6560,7 @@ Datum agtype_to_graphid(PG_FUNCTION_ARGS)
 
     PG_FREE_IF_COPY(agtype_in, 0);
 
-    PG_RETURN_INT64(agtv.val.int_value);
+    PG_RETURN_INT16(agtv.val.int_value);
 }
 
 PG_FUNCTION_INFO_V1(age_type);
@@ -6993,7 +6952,7 @@ static agtype_value *tostring_helper(Datum arg, Oid type, char *msghdr)
 
 PG_FUNCTION_INFO_V1(age_tostringlist);
 /*
- * toStringList() converts a list of values and returns a list of String values.
+ * toStringList() converts a list of values and returns a list of String values. 
  * If any values are not convertible to string point they will be null in the list returned.
  */
 Datum age_tostringlist(PG_FUNCTION_ARGS)
@@ -7014,18 +6973,14 @@ Datum age_tostringlist(PG_FUNCTION_ARGS)
     agt_arg = AG_GET_ARG_AGTYPE_P(0);
     /* check for an array */
     if (!AGT_ROOT_IS_ARRAY(agt_arg) || AGT_ROOT_IS_SCALAR(agt_arg))
-    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("toStringList() argument must resolve to a list or null")));
-    }
 
     count = AGT_ROOT_COUNT(agt_arg);
 
     /* if we have an empty list or only one element in the list, return null */
     if (count == 0)
-    {
         PG_RETURN_NULL();
-    }
 
     /* clear the result structure */
     MemSet(&agis_result, 0, sizeof(agtype_in_state));
@@ -7049,28 +7004,25 @@ Datum age_tostringlist(PG_FUNCTION_ARGS)
             {
                 string_elem.type = AGTV_NULL;
 
-                agis_result.res = push_agtype_value(&agis_result.parse_state,
-                                                    WAGT_ELEM, &string_elem);
+                agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM, &string_elem);
             }
 
             string_elem.val.string.val = elem->val.string.val;
             string_elem.val.string.len = elem->val.string.len;
 
-            agis_result.res = push_agtype_value(&agis_result.parse_state,
-                                                WAGT_ELEM, &string_elem);
+            agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM, &string_elem);
 
             break;
 
         case AGTV_FLOAT:
-
+            
             sprintf(buffer, "%.*g", DBL_DIG, elem->val.float_value);
             string_elem.val.string.val = pstrdup(buffer);
             string_elem.val.string.len = strlen(buffer);
 
-            agis_result.res = push_agtype_value(&agis_result.parse_state,
-                                                WAGT_ELEM, &string_elem);
+            agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM, &string_elem);
 
-            break;
+            break; 
 
         case AGTV_INTEGER:
 
@@ -7078,23 +7030,19 @@ Datum age_tostringlist(PG_FUNCTION_ARGS)
             string_elem.val.string.val = pstrdup(buffer);
             string_elem.val.string.len = strlen(buffer);
 
-            agis_result.res = push_agtype_value(&agis_result.parse_state,
-                                                WAGT_ELEM, &string_elem);
+            agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM, &string_elem);
 
             break;
 
         default:
 
             string_elem.type = AGTV_NULL;
-            agis_result.res = push_agtype_value(&agis_result.parse_state,
-                                                WAGT_ELEM, &string_elem);
+            agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM, &string_elem);
 
             break;
         }
     }
-
-    agis_result.res = push_agtype_value(&agis_result.parse_state,
-                                        WAGT_END_ARRAY, NULL);
+    agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_END_ARRAY, NULL);
 
     PG_RETURN_POINTER(agtype_value_to_agtype(agis_result.res));
 }
@@ -10531,7 +10479,7 @@ Datum age_percentile_cont_aggfinalfn(PG_FUNCTION_ARGS)
     if (!tuplesort_skiptuples(pgastate->sortstate, first_row, true))
         elog(ERROR, "missing row in percentile_cont");
 
-    if (!tuplesort_getdatum(pgastate->sortstate, true, false, &first_val, &isnull, NULL))
+    if (!tuplesort_getdatum(pgastate->sortstate, true, &first_val, &isnull, NULL))
         elog(ERROR, "missing row in percentile_cont");
     if (isnull)
         PG_RETURN_NULL();
@@ -10542,7 +10490,7 @@ Datum age_percentile_cont_aggfinalfn(PG_FUNCTION_ARGS)
     }
     else
     {
-        if (!tuplesort_getdatum(pgastate->sortstate, true, false, &second_val, &isnull, NULL))
+        if (!tuplesort_getdatum(pgastate->sortstate, true, &second_val, &isnull, NULL))
             elog(ERROR, "missing row in percentile_cont");
 
         if (isnull)
@@ -10608,7 +10556,7 @@ Datum age_percentile_disc_aggfinalfn(PG_FUNCTION_ARGS)
             elog(ERROR, "missing row in percentile_disc");
     }
 
-    if (!tuplesort_getdatum(pgastate->sortstate, true, false, &val, &isnull, NULL))
+    if (!tuplesort_getdatum(pgastate->sortstate, true, &val, &isnull, NULL))
         elog(ERROR, "missing row in percentile_disc");
 
     /* We shouldn't have stored any nulls, but do the right thing anyway */
@@ -11757,5 +11705,5 @@ Datum agtype_volatile_wrapper(PG_FUNCTION_ARGS)
     }
 
     /* otherwise, just pass it through */
-    PG_RETURN_POINTER((const void*) PG_GETARG_DATUM(0));
+    PG_RETURN_POINTER(PG_GETARG_DATUM(0));
 }

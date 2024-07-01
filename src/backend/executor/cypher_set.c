@@ -98,7 +98,7 @@ static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
     TM_FailureData hufd;
     TM_Result lock_result;
     Buffer buffer;
-    TU_UpdateIndexes update_indexes;
+    bool update_indexes;
     TM_Result   result;
     CommandId cid = GetCurrentCommandId(true);
     ResultRelInfo **saved_resultRels = estate->es_result_relations;
@@ -154,10 +154,9 @@ static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
         }
 
         /* Insert index entries for the tuple */
-        if (resultRelInfo->ri_NumIndices > 0 && update_indexes != TU_None)
+        if (resultRelInfo->ri_NumIndices > 0 && update_indexes)
         {
-          ExecInsertIndexTuples(resultRelInfo, elemTupleSlot, estate, false, false, NULL, NIL,
-                                (update_indexes == TU_Summarizing));
+          ExecInsertIndexTuples(resultRelInfo, elemTupleSlot, estate, false, false, NULL, NIL);
         }
 
         ExecCloseIndices(resultRelInfo);
@@ -472,8 +471,7 @@ static void process_update_list(CustomScanState *node)
         }
 
         /* Alter the properties Agtype value. */
-        if (update_item->prop_name != NULL &&
-            strcmp(update_item->prop_name, "") != 0)
+        if (strcmp(update_item->prop_name, ""))
         {
             altered_properties = alter_property_value(original_properties,
                                                       update_item->prop_name,
