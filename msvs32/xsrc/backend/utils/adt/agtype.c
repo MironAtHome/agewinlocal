@@ -1816,7 +1816,7 @@ agtype_value *string_to_agtype_value(char *s)
     return agtv;
 }
 
-agtype_value* datum_varchar_to_agtype_value(Datum dat)
+agtype_value *datum_varchar_to_agtype_value(Datum dat)
 {
     VarChar *varchar_value = DatumGetVarCharPP(dat);
     agtype_value* agtv = palloc0(sizeof(agtype_value));
@@ -2089,12 +2089,9 @@ PGMODULEEXPORT Datum _agtype_build_vertex(PG_FUNCTION_ARGS)
     /* handles null */
     if (fcinfo->args[0].isnull)
     {
-        /*
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                  errmsg("_agtype_build_vertex() graphid cannot be NULL")));
-                 */
-        PG_RETURN_NULL();
     }
 
     if (fcinfo->args[1].isnull)
@@ -5781,7 +5778,7 @@ PGMODULEEXPORT Datum age_properties(PG_FUNCTION_ARGS)
     }
 
     agt_arg = AG_GET_ARG_AGTYPE_P(0);
-    /* check for a scalar object */
+    /* check for a scalar or regular object */
 
     if (!AGT_ROOT_IS_SCALAR(agt_arg) && !AGT_ROOT_IS_OBJECT(agt_arg))
     {
@@ -5892,8 +5889,8 @@ PGMODULEEXPORT Datum age_toboolean(PG_FUNCTION_ARGS)
 	}
 
     /*
-     * toBoolean() supports bool, text, cstring, or the agtype bool, and string
-     * input.
+     * toBoolean() supports bool, text, cstring, integer or the agtype bool,
+     * string and integer input.
      */
     arg = args[0];
     type = types[0];
@@ -5987,30 +5984,30 @@ PGMODULEEXPORT Datum age_tobooleanlist(PG_FUNCTION_ARGS)
     int count;
     int i;
 
-	// check for null
+	/* check for null */
     if (PG_ARGISNULL(0))
         PG_RETURN_NULL();
 
     agt_arg = AG_GET_ARG_AGTYPE_P(0);
-    // check for an array
+    /* check for an array */
     if (!AGT_ROOT_IS_ARRAY(agt_arg) || AGT_ROOT_IS_SCALAR(agt_arg))
 		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					errmsg("toBooleanList() argument must resolve to a list or null")));
 
     count = AGT_ROOT_COUNT(agt_arg);
 
-    // if we have an empty list or only one element in the list, return null
+    /* if we have an empty list or only one element in the list, return null */
     if (count == 0)
 		PG_RETURN_NULL();
 
-    // clear the result structure 
+    /* clear the result structure  */
     MemSet(&agis_result, 0, sizeof(agtype_in_state));
 
-    // push the beginning of the array 
+    /* push the beginning of the array  */
     agis_result.res = push_agtype_value(&agis_result.parse_state,
 		WAGT_BEGIN_ARRAY, NULL);
 
-	// iterate through the list
+	/* iterate through the list */
 	for (i = 0; i < count; i++)
 	{
 		elem = get_ith_agtype_value_from_container(&agt_arg->root, i);
@@ -6248,7 +6245,7 @@ PGMODULEEXPORT Datum age_tofloatlist(PG_FUNCTION_ARGS)
     /* iterate through the list */
     for (i = 0; i < count; i++)
     {
-        // TODO: check element's type, it's value, and convert it to float if possible.
+        /* check element's type, it's value, and convert it to float if possible. */
         elem = get_ith_agtype_value_from_container(&agt_arg->root, i);
         float_elem.type = AGTV_FLOAT;
 
@@ -6923,7 +6920,7 @@ PGMODULEEXPORT Datum age_label(PG_FUNCTION_ARGS)
     /* get the argument */
     agt_arg = AG_GET_ARG_AGTYPE_P(0);
 
-    // edges and vertices are considered scalars
+    /* edges and vertices are considered scalars */
     if (!AGT_ROOT_IS_SCALAR(agt_arg))
     {
         if (AGTE_IS_NULL(agt_arg->root.children[0]))
@@ -6936,7 +6933,7 @@ PGMODULEEXPORT Datum age_label(PG_FUNCTION_ARGS)
 
     agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
 
-    // fail if agtype value isn't an edge or vertex
+    /* fail if agtype value isn't an edge or vertex */
     if (agtv_value->type != AGTV_VERTEX && agtv_value->type != AGTV_EDGE)
     {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -7007,7 +7004,7 @@ PGMODULEEXPORT Datum age_tostring(PG_FUNCTION_ARGS)
 
 /*
  * Helper function to take any valid type and convert it to an agtype string.
- * Returns NULL for NULL output.
+ * Returns NULL for NULL input.
  */
 static agtype_value *tostring_helper(Datum arg, Oid type, char *msghdr)
 {
@@ -11282,7 +11279,7 @@ PGMODULEEXPORT Datum age_keys(PG_FUNCTION_ARGS)
         PG_RETURN_NULL();
     }
 
-    //needs to be a map, node, or relationship
+    /* needs to be a map, node, or relationship */
     agt_arg = AG_GET_ARG_AGTYPE_P(0);
 
     /*
@@ -11744,7 +11741,8 @@ PGMODULEEXPORT Datum age_unnest(PG_FUNCTION_ARGS)
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("invalid unnest boolean flags passed")));
     }
-    // check for null
+
+    /* check for a NULL expr */
     if (PG_ARGISNULL(0))
     {
         PG_RETURN_NULL();
